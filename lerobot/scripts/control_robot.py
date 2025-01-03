@@ -137,7 +137,8 @@ def calibrate(robot: Robot, arms: list[str] | None):
     if arms is None:
         arms = robot.available_arms
 
-    unknown_arms = [arm_id for arm_id in arms if arm_id not in robot.available_arms]
+    unknown_arms = [
+        arm_id for arm_id in arms if arm_id not in robot.available_arms]
     available_arms_str = " ".join(robot.available_arms)
     unknown_arms_str = " ".join(unknown_arms)
 
@@ -218,15 +219,18 @@ def record(
     if single_task:
         task = single_task
     else:
-        raise NotImplementedError("Only single-task recording is supported for now")
+        raise NotImplementedError(
+            "Only single-task recording is supported for now")
 
     # Load pretrained policy
     if pretrained_policy_name_or_path is not None:
-        policy, policy_fps, device, use_amp = init_policy(pretrained_policy_name_or_path, policy_overrides)
+        policy, policy_fps, device, use_amp = init_policy(
+            pretrained_policy_name_or_path, policy_overrides)
 
         if fps is None:
             fps = policy_fps
-            logging.warning(f"No fps provided, so using the fps from policy config ({policy_fps}).")
+            logging.warning(
+                f"No fps provided, so using the fps from policy config ({policy_fps}).")
         elif fps != policy_fps:
             logging.warning(
                 f"There is a mismatch between the provided fps ({fps}) and the one from policy config ({policy_fps})."
@@ -240,7 +244,8 @@ def record(
         )
         dataset.start_image_writer(
             num_processes=num_image_writer_processes,
-            num_threads=num_image_writer_threads_per_camera * len(robot.cameras),
+            num_threads=num_image_writer_threads_per_camera *
+            len(robot.cameras),
         )
         sanity_check_dataset_robot_compatibility(dataset, robot, fps, video)
     else:
@@ -253,7 +258,8 @@ def record(
             robot=robot,
             use_videos=video,
             image_writer_processes=num_image_writer_processes,
-            image_writer_threads=num_image_writer_threads_per_camera * len(robot.cameras),
+            image_writer_threads=num_image_writer_threads_per_camera *
+            len(robot.cameras),
         )
 
     if not robot.is_connected:
@@ -267,7 +273,8 @@ def record(
     # 3. place the cameras windows on screen
     enable_teleoperation = policy is None
     log_say("Warmup record", play_sounds)
-    warmup_record(robot, events, enable_teleoperation, warmup_time_s, display_cameras, fps)
+    warmup_record(robot, events, enable_teleoperation,
+                  warmup_time_s, display_cameras, fps)
 
     if has_method(robot, "teleop_safety_stop"):
         robot.teleop_safety_stop()
@@ -300,7 +307,8 @@ def record(
         # TODO(rcadene): add an option to enable teleoperation during reset
         # Skip reset for the last episode to be recorded
         if not events["stop_recording"] and (
-            (dataset.num_episodes < num_episodes - 1) or events["rerecord_episode"]
+            (dataset.num_episodes < num_episodes -
+             1) or events["rerecord_episode"]
         ):
             log_say("Reset the environment", play_sounds)
             reset_environment(robot, events, reset_time_s)
@@ -346,7 +354,8 @@ def replay(
     # TODO(rcadene, aliberts): refactor with control_loop, once `dataset` is an instance of LeRobotDataset
     # TODO(rcadene): Add option to record logs
 
-    dataset = LeRobotDataset(repo_id, root=root, episodes=[episode], local_files_only=local_files_only)
+    dataset = LeRobotDataset(repo_id, root=root, episodes=[
+                             episode], local_files_only=local_files_only)
     actions = dataset.hf_dataset.select_columns("action")
 
     if not robot.is_connected:
@@ -456,7 +465,8 @@ if __name__ == "__main__":
         default=60,
         help="Number of seconds for resetting the environment after each episode.",
     )
-    parser_record.add_argument("--num-episodes", type=int, default=50, help="Number of episodes to record.")
+    parser_record.add_argument(
+        "--num-episodes", type=int, default=50, help="Number of episodes to record.")
     parser_record.add_argument(
         "--run-compute-stats",
         type=int,
@@ -540,7 +550,8 @@ if __name__ == "__main__":
         default=0,
         help="Use local files only. By default, this script will try to fetch the dataset from the hub if it exists.",
     )
-    parser_replay.add_argument("--episode", type=int, default=0, help="Index of the episode to replay.")
+    parser_replay.add_argument(
+        "--episode", type=int, default=0, help="Index of the episode to replay.")
 
     args = parser.parse_args()
 

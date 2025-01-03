@@ -36,7 +36,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 # Pass this as the first argument to init_hydra_config.
 DEFAULT_CONFIG_PATH = "lerobot/configs/default.yaml"
 
-ROBOT_CONFIG_PATH_TEMPLATE = "lerobot/configs/robot/{robot}.yaml"
+ROBOT_CONFIG_PATH_TEMPLATE = "lerobot/configs/robot/franka.yaml"
 
 TEST_ROBOT_TYPES = []
 for robot_type in available_robots:
@@ -51,10 +51,13 @@ for motor_type in available_motors:
     TEST_MOTOR_TYPES += [(motor_type, True), (motor_type, False)]
 
 # Camera indices used for connecting physical cameras
-OPENCV_CAMERA_INDEX = int(os.environ.get("LEROBOT_TEST_OPENCV_CAMERA_INDEX", 0))
-INTELREALSENSE_CAMERA_INDEX = int(os.environ.get("LEROBOT_TEST_INTELREALSENSE_CAMERA_INDEX", 128422271614))
+OPENCV_CAMERA_INDEX = int(os.environ.get(
+    "LEROBOT_TEST_OPENCV_CAMERA_INDEX", 0))
+INTELREALSENSE_CAMERA_INDEX = int(os.environ.get(
+    "LEROBOT_TEST_INTELREALSENSE_CAMERA_INDEX", 128422271614))
 
-DYNAMIXEL_PORT = os.environ.get("LEROBOT_TEST_DYNAMIXEL_PORT", "/dev/tty.usbmodem575E0032081")
+DYNAMIXEL_PORT = os.environ.get(
+    "LEROBOT_TEST_DYNAMIXEL_PORT", "/dev/tty.usbmodem575E0032081")
 DYNAMIXEL_MOTORS = {
     "shoulder_pan": [1, "xl430-w250"],
     "shoulder_lift": [2, "xl430-w250"],
@@ -64,7 +67,8 @@ DYNAMIXEL_MOTORS = {
     "gripper": [6, "xl330-m288"],
 }
 
-FEETECH_PORT = os.environ.get("LEROBOT_TEST_FEETECH_PORT", "/dev/tty.usbmodem585A0080971")
+FEETECH_PORT = os.environ.get(
+    "LEROBOT_TEST_FEETECH_PORT", "/dev/tty.usbmodem585A0080971")
 FEETECH_MOTORS = {
     "shoulder_pan": [1, "sts3215"],
     "shoulder_lift": [2, "sts3215"],
@@ -134,9 +138,11 @@ def require_env(func):
         if "env_name" in arg_names:
             # Get the index of 'env_name' and retrieve the value from args
             index = arg_names.index("env_name")
-            env_name = args[index] if len(args) > index else kwargs.get("env_name")
+            env_name = args[index] if len(
+                args) > index else kwargs.get("env_name")
         else:
-            raise ValueError("Function does not have 'env_name' as an argument.")
+            raise ValueError(
+                "Function does not have 'env_name' as an argument.")
 
         # Perform the package check
         package_name = f"gym_{env_name}"
@@ -163,9 +169,11 @@ def require_package_arg(func):
         if "required_packages" in arg_names:
             # Get the index of 'required_packages' and retrieve the value from args
             index = arg_names.index("required_packages")
-            required_packages = args[index] if len(args) > index else kwargs.get("required_packages")
+            required_packages = args[index] if len(
+                args) > index else kwargs.get("required_packages")
         else:
-            raise ValueError("Function does not have 'required_packages' as an argument.")
+            raise ValueError(
+                "Function does not have 'required_packages' as an argument.")
 
         if required_packages is None:
             return func(*args, **kwargs)
@@ -222,11 +230,14 @@ def require_robot(func):
         mock = kwargs.get("mock")
 
         if robot_type is None:
-            raise ValueError("The 'robot_type' must be an argument of the test function.")
+            raise ValueError(
+                "The 'robot_type' must be an argument of the test function.")
         if request is None:
-            raise ValueError("The 'request' fixture must be an argument of the test function.")
+            raise ValueError(
+                "The 'request' fixture must be an argument of the test function.")
         if mock is None:
-            raise ValueError("The 'mock' variable must be an argument of the test function.")
+            raise ValueError(
+                "The 'mock' variable must be an argument of the test function.")
 
         # Run test with a real robot. Skip test if robot connection fails.
         if not mock and not request.getfixturevalue("is_robot_available"):
@@ -246,11 +257,14 @@ def require_camera(func):
         mock = kwargs.get("mock")
 
         if request is None:
-            raise ValueError("The 'request' fixture must be an argument of the test function.")
+            raise ValueError(
+                "The 'request' fixture must be an argument of the test function.")
         if camera_type is None:
-            raise ValueError("The 'camera_type' must be an argument of the test function.")
+            raise ValueError(
+                "The 'camera_type' must be an argument of the test function.")
         if mock is None:
-            raise ValueError("The 'mock' variable must be an argument of the test function.")
+            raise ValueError(
+                "The 'mock' variable must be an argument of the test function.")
 
         if not mock and not request.getfixturevalue("is_camera_available"):
             pytest.skip(f"A {camera_type} camera is not available.")
@@ -269,11 +283,14 @@ def require_motor(func):
         mock = kwargs.get("mock")
 
         if request is None:
-            raise ValueError("The 'request' fixture must be an argument of the test function.")
+            raise ValueError(
+                "The 'request' fixture must be an argument of the test function.")
         if motor_type is None:
-            raise ValueError("The 'motor_type' must be an argument of the test function.")
+            raise ValueError(
+                "The 'motor_type' must be an argument of the test function.")
         if mock is None:
-            raise ValueError("The 'mock' variable must be an argument of the test function.")
+            raise ValueError(
+                "The 'mock' variable must be an argument of the test function.")
 
         if not mock and not request.getfixturevalue("is_motor_available"):
             pytest.skip(f"A {motor_type} motor is not available.")
