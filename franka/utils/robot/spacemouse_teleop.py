@@ -52,49 +52,8 @@ class SpacemouseTeleop:
         sm_state = self.Spacemouse_controller.get_motion_state_transformed()
 
         return {
-            "translation": sm_state[:3],
-            "rotation": sm_state[3:]
+            "translation": sm_state[:3]*MOVE_INCREMENT,
+            "rotation": sm_state[3:]*ROTATION_SCALE,
+            "button_0": self.Spacemouse_controller.is_button_pressed(0),
+            "button_1": self.Spacemouse_controller.is_button_pressed(1)
         }
-
-    def do_motion(self, robot):
-        """
-        Reads the Spacemouse state and applies position/orientation increments
-        to the robot's current target.
-        """
-        if not self.is_running:
-            return
-
-        sm_state = self.Spacemouse_controller.get_motion_state_transformed()
-        dpos = sm_state[:3] * MOVE_INCREMENT
-        drot_xyz = sm_state[3:] * ROTATION_SCALE
-
-        # Example: ignoring rotation if not needed
-        # drot_xyz[:] = 0
-
-        current_pos = robot.panda.get_position()
-        current_ori = robot.panda.get_orientation()  # quaternion [x, y, z, w]
-
-        # Apply translation
-        new_pos = current_pos + dpos
-
-        # Apply rotation
-        delta_rotation = R.from_euler('xyz', drot_xyz)
-        new_ori = (delta_rotation * R.from_quat(current_ori)).as_quat()
-
-        # Set the new pose via the robot's controller
-        robot.controller.set_control(new_pos, new_ori)
-
-        # Handle gripper state changes
-        if self.Spacemouse_controller.is_button_pressed(0):
-            success = robot.gripper.grasp(
-                0.03,
-                speed=SPEED,
-                force=FORCE,
-                epsilon_inner=0.05,
-                epsilon_outer=0.05
-            )
-            print("Grasp successful" if success else "Grasp failed")
-
-        elif self.Spacemouse_controller.is_button_pressed(1):
-            success = robot.gripper.move(0.08, speed=SPEED)
-            print("Release successful" if success else "Release failed")

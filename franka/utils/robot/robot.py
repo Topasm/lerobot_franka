@@ -60,7 +60,7 @@ class FrankaAPI(mp.Process):
             ctx = self.panda.create_context(frequency=1000)
             controller = panda_py.controllers.CartesianImpedance()
             self.panda.start_controller(controller)
-            time.sleep(1)
+            # time.sleep(1)
 
             while ctx.ok() and running:
                 # Check for new dpos and drot values
@@ -76,7 +76,7 @@ class FrankaAPI(mp.Process):
                     controller.set_control(
                         current_translation, current_rotation)
 
-                # time.sleep(0.001)  # Small delay to prevent CPU overuse
+                time.sleep(0.001)  # Small delay to prevent CPU overuse
 
         except Exception as e:
             print(e)
@@ -85,18 +85,6 @@ class FrankaAPI(mp.Process):
     def send_command(self, dpos, drot):
         """Send dpos and drot to the run process."""
         self.queue.put((dpos, drot))
-    # def EE_control(self, EEF_pos, EEF_ori, gripper_width):
-    #     """
-    #     Control the end-effector position, orientation, and gripper width.
-    #     """
-    #     # Control the end-effector position
-    #     self.panda.move_to_position(EEF_pos)
-
-    #     # Control the end-effector orientation
-    #     self.panda.move_to_orientation(EEF_ori)
-
-    #     # Control the gripper width
-    #     self.gripper.move(width=gripper_width, speed=0.1)
 
     def put_state(self, state_data):
         """Put new state data into ring buffer"""
@@ -132,7 +120,7 @@ class FrankaAPI(mp.Process):
 
         # # Open gripper
         # self.gripper.move(width=0.9, speed=0.1)
-        self.panda.enable_logging(int(10))
+
         print("Robot initialized")
 
     def get_status(self):
@@ -142,10 +130,11 @@ class FrankaAPI(mp.Process):
 
         log_EE_pose = self.panda.get_position()
         log_EE_orientation = self.panda.get_orientation()
+        self.robot_state = self.panda.get_state()
 
-        log_joint_pose = self.panda.get_log().get("q")
-        log_joint_vel = self.panda.get_log().get("dq")
-        log_joint_torque = self.panda.get_log().get("tau_J")
+        log_joint_pose = self.robot_state.q
+        log_joint_vel = self.robot_state.dq
+        log_joint_torque = self.robot_state.tau_J
 
         log = {
             "arm": {

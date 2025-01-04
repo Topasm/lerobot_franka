@@ -202,8 +202,8 @@ class FrankaControl(FrankaAPI):
 
         # before_write_t = time.perf_counter()
         # self.teleop.do_motion(state=action_dict, robot=self)
-        self.logs["write_pos_dt_s"] = time.perf_counter() - before_write_t
-
+        # self.logs["write_pos_dt_s"] = time.perf_counter() - before_write_t
+        print("Sending action to robot.")
         # TODO(aliberts): return action_sent when motion is limited
         return action
 
