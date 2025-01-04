@@ -82,6 +82,9 @@ class FrankaControl(FrankaAPI):
 
     def connect(self):
         self.is_connected = self.startup()
+        self.control_out = SpacemouseTeleop(
+            shm_manager=self.shm_manager)
+        self.control_out.startup(robot=self)
         if not self.is_connected:
             print(
                 "Another process is already using Stretch. Try running 'stretch_free_robot_process.py'")
@@ -107,10 +110,6 @@ class FrankaControl(FrankaAPI):
         # TODO(aliberts): return ndarrays instead of torch.Tensors
         if not self.is_connected:
             raise ConnectionError()
-
-        if self.teleop is None:
-            self.control_out = SpacemouseTeleop(shm_manager=self.shm_manager)
-            self.control_out.startup(robot=self)
 
         before_read_t = time.perf_counter()
         state = self.get_state()

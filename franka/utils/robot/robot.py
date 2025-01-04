@@ -60,7 +60,7 @@ class FrankaAPI(mp.Process):
             ctx = self.panda.create_context(frequency=1000)
             controller = panda_py.controllers.CartesianImpedance()
             self.panda.start_controller(controller)
-            # time.sleep(1)
+            time.sleep(1)
 
             while ctx.ok() and running:
                 # Check for new dpos and drot values
@@ -75,8 +75,6 @@ class FrankaAPI(mp.Process):
                         ).as_quat()
                     controller.set_control(
                         current_translation, current_rotation)
-
-                time.sleep(0.001)  # Small delay to prevent CPU overuse
 
         except Exception as e:
             print(e)
