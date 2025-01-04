@@ -1,19 +1,19 @@
 _target_: lerobot.common.robot_devices.robots.franka_control.FrankaControl
 robot_type: Franka
-hostname: "172.16.0.2"
+robot_ip: "172.16.0.2"
 
 
 cameras:
   head:
-    _target_: lerobot.common.robot_devices.cameras.intelrealsense.IntelRealSenseCamera.init_from_name
-    name: Intel RealSense D435I
+    _target_: lerobot.common.robot_devices.cameras.intelrealsense.IntelRealSenseCamera
+    serial_number: 148522072369
     fps: 30
     width: 640
     height: 480
     rotation: 90
   wrist:
-    _target_: lerobot.common.robot_devices.cameras.intelrealsense.IntelRealSenseCamera.init_from_name
-    name: Intel RealSense D435
+    _target_: lerobot.common.robot_devices.cameras.intelrealsense.IntelRealSenseCamera
+    serial_number: 236422073332
     fps: 30
     width: 640
     height: 480

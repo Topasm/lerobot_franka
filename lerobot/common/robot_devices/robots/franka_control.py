@@ -14,21 +14,71 @@ from franka.utils.robot.spacemouse_teleop import SpacemouseTeleop
 class FrankaRobotConfig:
     robot_type: str | None = "Franka"
     # Cameras or other additional configs
-    cameras: dict = field(default_factory=lambda: {})
-    max_relative_target: list[float] | float | None = None
+    cameras: dict[str, Camera] = field(
+        default_factory=lambda: {})
     robot_ip: str | None = None
 
 
 class FrankaControl(FrankaAPI):
+    # Exclude from dataclass fields
+    is_connected: bool = field(init=False, default=False)
+    state_keys: list | None = field(init=False, default=None)  # Add this line
+
     def __init__(self, config: FrankaRobotConfig | None = None, **kwargs):
-        super().__init__()
+
+        if config is None:
+            config = FrankaRobotConfig()
         self.config = replace(config, **kwargs)
 
+        super().__init__(robot_ip=self.config.robot_ip)
         self.robot_type = self.config.robot_type
         self.cameras = self.config.cameras
-        self.teleop = None
         self.is_connected = False
+        self.teleop = None
         self.logs = {}
+
+    @property
+    def camera_features(self) -> dict:
+        cam_ft = {}
+        for cam_key, cam in self.cameras.items():
+            key = f"observation.images.{cam_key}"
+            cam_ft[key] = {
+                "shape": (cam.height, cam.width, cam.channels),
+                "names": ["height", "width", "channels"],
+                "info": None,
+            }
+        return cam_ft
+
+    @property
+    def motor_features(self) -> dict:
+        action_names = ["arm.joint_positions",
+                        "arm.joint_velocities", "gripper.width"]
+        state_names = ["arm.joint_positions", "arm.joint_velocities",
+                       "arm.joint_torques", "arm.EE_position", "arm.EE_orientation", "gripper.width"]
+        return {
+            "action": {
+                "dtype": "float32",
+                "shape": (len(action_names),),
+                "names": action_names,
+            },
+            "observation.state": {
+                "dtype": "float32",
+                "shape": (len(state_names),),
+                "names": state_names,
+            },
+        }
+
+    @property
+    def features(self):
+        return {**self.motor_features, **self.camera_features}
+
+    @property
+    def has_camera(self):
+        return len(self.cameras) > 0
+
+    @property
+    def num_cameras(self):
+        return len(self.cameras)
 
     def connect(self):
         self.is_connected = self.startup()
@@ -59,17 +109,18 @@ class FrankaControl(FrankaAPI):
             raise ConnectionError()
 
         if self.teleop is None:
-            self.teleop = SpacemouseTeleop(robot_instance=False)
-            self.teleop.startup(robot=self)
+            self.control_out = SpacemouseTeleop(shm_manager=self.shm_manager)
+            self.control_out.startup(robot=self)
 
         before_read_t = time.perf_counter()
         state = self.get_state()
-        action = self.teleop.get_state()
+        spa_out = self.control_out.get_state()
         self.logs["read_pos_dt_s"] = time.perf_counter() - before_read_t
 
+        self.send_command(dpos=spa_out["translation"],
+                          drot=spa_out["rotation"])
         before_write_t = time.perf_counter()
-        self.teleop.do_motion(robot=self)
-        self.push_command()
+
         self.logs["write_pos_dt_s"] = time.perf_counter() - before_write_t
 
         if self.state_keys is None:
@@ -77,9 +128,8 @@ class FrankaControl(FrankaAPI):
 
         if not record_data:
             return
-
-        state = torch.as_tensor(list(state.values()))
-        action = torch.as_tensor(list(action.values()))
+        action = spa_out
+        # action = torch.as_tensor(list(action.values()))
 
         # Capture images from cameras
         images = {}
@@ -141,9 +191,21 @@ class FrankaControl(FrankaAPI):
 
         return obs_dict
 
-    def send_action(self, action):
+    def send_action(self, action: torch.Tensor) -> torch.Tensor:
+        # TODO(aliberts): return ndarrays instead of torch.Tensors
+        if not self.is_connected:
+            raise ConnectionError()
 
-        self.move_to(positions=action)
+        # if self.teleop is None:
+        #     self.teleop = SpacemouseTeleop(robot_instance=False)
+        #     self.teleop.startup(robot=self)
+
+        # before_write_t = time.perf_counter()
+        # self.teleop.do_motion(state=action_dict, robot=self)
+        self.logs["write_pos_dt_s"] = time.perf_counter() - before_write_t
+
+        # TODO(aliberts): return action_sent when motion is limited
+        return action
 
     def disconnect(self):
         """

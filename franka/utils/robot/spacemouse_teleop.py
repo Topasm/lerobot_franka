@@ -18,13 +18,14 @@ class SpacemouseTeleop:
     move commands to a FrankaAPI instance.
     """
 
-    def __init__(self, robot_instance=False, deadzone=0.3):
+    def __init__(self, robot_instance=False, deadzone=0.3, shm_manager=None):
         self.robot_instance = robot_instance
         self.deadzone = deadzone
         self.is_running = False
+        self.shm_manager = shm_manager
 
         self.Spacemouse_controller = Spacemouse(
-            shm_manager=None,  # or pass a real SharedMemoryManager if needed
+            shm_manager=self.shm_manager,  # or pass a real SharedMemoryManager if needed
             deadzone=self.deadzone
         )
 
@@ -49,6 +50,7 @@ class SpacemouseTeleop:
         Example keys: translation (XYZ), rotation (XYZ).
         """
         sm_state = self.Spacemouse_controller.get_motion_state_transformed()
+
         return {
             "translation": sm_state[:3],
             "rotation": sm_state[3:]

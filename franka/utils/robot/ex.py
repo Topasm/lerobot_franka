@@ -73,8 +73,7 @@ class FrankaAPI(mp.Process):
 
         Robot_state = {
             # [x,y,z, qx,qy,qz,qw, gripper]
-            'EEF_state': np.zeros(29, dtype=np.float32),
-            'timestamp': np.array([time.time()], dtype=np.float64)
+            'Robot_state': np.zeros(29, dtype=np.float32)
         }
 
         # Shared Memory Manager
