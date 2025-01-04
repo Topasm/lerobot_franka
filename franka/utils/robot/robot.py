@@ -14,6 +14,8 @@ from multiprocessing.managers import SharedMemoryManager
 # Import your SpacemouseTeleop
 from franka.utils.robot.spacemouse_teleop import SpacemouseTeleop
 from franka.utils.shared_memory.shared_memory_ring_buffer import SharedMemoryRingBuffer
+import threading
+import queue
 
 
 class FrankaAPI(mp.Process):
@@ -23,10 +25,7 @@ class FrankaAPI(mp.Process):
     ):
         super().__init__()
 
-        self.obs_fps = 15
-
-        # Teleop reference
-        self.teleop: SpacemouseTeleop | None = None
+        self.obs_fps = 60
 
         self.panda = panda_py.Panda(hostname=robot_ip)
         self.gripper = libfranka.Gripper(robot_ip)
@@ -50,6 +49,7 @@ class FrankaAPI(mp.Process):
         # For demonstration: event to signal readiness
         self.ready_event = mp.Event()
         self.queue = mp.Queue()  # Queue for communication
+        self.gripper_cmd_queue = queue.Queue(int(5))
 
     def run(self):
         try:
@@ -80,6 +80,23 @@ class FrankaAPI(mp.Process):
             print(e)
             running = False
 
+    def _gripper_loop(self):
+        print("[FrankaAPI] Gripper thread started.")
+        while not self._gripper_stop_event.is_set():
+            try:
+                # Non-blocking get for new gripper commands
+                width = self.gripper_cmd_queue.get_nowait()
+                print(f"[FrankaAPI] Moving gripper to width {width}")
+                suc = self.gripper.move(width=width, speed=0.1)
+                print(f"[FrankaAPI] Move gripper success: {suc}")
+            except queue.Empty:
+                pass
+
+            # Sleep a bit so we don't spam the CPU
+            time.sleep(0.01)
+
+        print("[FrankaAPI] Gripper thread stopping.")
+
     def send_command(self, dpos, drot):
         """Send dpos and drot to the run process."""
         self.queue.put((dpos, drot))
@@ -97,27 +114,25 @@ class FrankaAPI(mp.Process):
         # Move to home position
         self.panda.move_to_joint_position(joint_pose)
 
-        # Open gripper
-        self.gripper.move(width=0.9, speed=0.1)
-
         action = np.zeros((9,))
         action[:-2] = joint_pose
 
         self.start()
+        # threading.Thread(target=self.move_gripper,
+        #                  args=(,)).start()
+
+        self._gripper_stop_event = threading.Event()
+        self._gripper_thread = threading.Thread(
+            target=self._gripper_loop,
+            daemon=True
+        )
+        self._gripper_thread.start()
+        # Open gripper
+        self.move_gripper(width=0.9)
 
         return True
 
     def init_robot(self):
-        # joint_pose = [
-        #     -0.01588696, -0.25534376, 0.18628714,
-        #     -2.28398158, 0.0769999, 2.02505396, 0.07858208
-        # ]
-
-        # # Move to home position
-        # self.panda.move_to_joint_position(joint_pose)
-
-        # # Open gripper
-        # self.gripper.move(width=0.9, speed=0.1)
 
         print("Robot initialized")
 
@@ -147,8 +162,12 @@ class FrankaAPI(mp.Process):
 
         return log
 
+    def move_gripper(self, width):
+        self.gripper_cmd_queue.put(width)
+
   # ========= context manager ===========
-    @property
+
+    @ property
     def is_ready(self):
         """
         Since there is no camera, you might decide to always return True
@@ -171,6 +190,8 @@ class FrankaAPI(mp.Process):
         If you have other services, stop them here.
         """
         self.join()
+        self._gripper_stop_event.set()
+        self._gripper_thread.join()
         if wait:
             self.stop_wait()
 

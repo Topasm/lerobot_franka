@@ -10,7 +10,7 @@ cameras:
     fps: 30
     width: 640
     height: 480
-    rotation: 90
+    # rotation: 90
   wrist:
     _target_: lerobot.common.robot_devices.cameras.intelrealsense.IntelRealSenseCamera
     serial_number: 236422073332

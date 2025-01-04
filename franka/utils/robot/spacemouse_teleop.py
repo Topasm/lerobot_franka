@@ -6,8 +6,8 @@ from scipy.spatial.transform import Rotation as R
 
 from franka.utils.inputs.spacemouse_shared_memory import Spacemouse
 
-MOVE_INCREMENT = 0.005
-ROTATION_SCALE = 0.015
+MOVE_INCREMENT = 0.010
+ROTATION_SCALE = 0.03
 SPEED = 0.1  # [m/s]
 FORCE = 20.0  # [N]
 
@@ -54,6 +54,5 @@ class SpacemouseTeleop:
         return {
             "translation": sm_state[:3]*MOVE_INCREMENT,
             "rotation": sm_state[3:]*ROTATION_SCALE,
-            "button_0": self.Spacemouse_controller.is_button_pressed(0),
-            "button_1": self.Spacemouse_controller.is_button_pressed(1)
+            "gripper": int(self.Spacemouse_controller.is_button_pressed(0))-int(self.Spacemouse_controller.is_button_pressed(1)),
         }

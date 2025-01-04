@@ -118,6 +118,13 @@ class FrankaControl(FrankaAPI):
 
         self.send_command(dpos=spa_out["translation"],
                           drot=spa_out["rotation"])
+        state["gripper.width"] += 0.1*spa_out["gripper"]
+        if state["gripper.width"] > 0.8:
+            state["gripper.width"] = 0.8
+        if state["gripper.width"] < 0.01:
+            state["gripper.width"] = 0.01
+        self.move_gripper(state["gripper.width"])
+
         before_write_t = time.perf_counter()
 
         self.logs["write_pos_dt_s"] = time.perf_counter() - before_write_t
