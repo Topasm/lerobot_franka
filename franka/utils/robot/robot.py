@@ -1,212 +1,226 @@
-# franka_api.py
+# franka_api_threads.py
 
 import time
-import multiprocessing as mp
+import threading
+import queue
 import numpy as np
 import panda_py.controllers
 import torch
 import panda_py
 from panda_py import libfranka
-import transforms3d
 from scipy.spatial.transform import Rotation as R
 from multiprocessing.managers import SharedMemoryManager
 
-# Import your SpacemouseTeleop
-from franka.utils.robot.spacemouse_teleop import SpacemouseTeleop
+# If you still want to keep your SharedMemoryRingBuffer usage:
 from franka.utils.shared_memory.shared_memory_ring_buffer import SharedMemoryRingBuffer
-import threading
-import queue
+# If you have a SpacemouseTeleop, import it here:
+# from franka.utils.robot.spacemouse_teleop import SpacemouseTeleop
+MOVE_INCREMENT = 0.0002
+GRIPPER_INCREMENT = 0.02
 
 
-class FrankaAPI(mp.Process):
-    def __init__(
-        self,
-        robot_ip=None
-    ):
-        super().__init__()
+class FrankaAPI:
+    def __init__(self, robot_ip=None):
+        """
+        Thread-based FrankaAPI. No mp.Process subclass.
+        """
+        self.robot_ip = robot_ip
 
+        # Robot and gripper
+        self.panda = panda_py.Panda(hostname=self.robot_ip)
+        self.gripper = libfranka.Gripper(self.robot_ip)
+        # Example ring buffer usage
         self.obs_fps = 60
-
-        self.panda = panda_py.Panda(hostname=robot_ip)
-        self.gripper = libfranka.Gripper(robot_ip)
         robot_state = {
-            # [x,y,z, qx,qy,qz,qw, gripper]
-            'Robot_state': np.zeros(29, dtype=np.float32)
+            # [x, y, z, qx, qy, qz, qw, gripper] => total 29 floats for example
+            "Robot_state": np.zeros(29, dtype=np.float32)
         }
-
-        # Shared Memory Manager
         self.shm_manager = SharedMemoryManager()
         self.shm_manager.start()
 
-        self.Robot_state_buffer = SharedMemoryRingBuffer.create_from_examples(
-            shm_manager=self.shm_manager,
-            examples=robot_state,
-            get_max_k=30,  # Store last 30 states
-            get_time_budget=0.2,
-            put_desired_frequency=self.obs_fps
-        )
+        # self.Robot_state_buffer = SharedMemoryRingBuffer.create_from_examples(
+        #     shm_manager=self.shm_manager,
+        #     examples=robot_state,
+        #     get_max_k=30,
+        #     get_time_budget=0.2,
+        #     put_desired_frequency=self.obs_fps,
+        # )
 
-        # For demonstration: event to signal readiness
-        self.ready_event = mp.Event()
-        self.queue = mp.Queue()  # Queue for communication
-        self.gripper_cmd_queue = queue.Queue(int(5))
+        # Queues & events
+        self._stop_event = threading.Event()
+        self._robot_thread = None
+        self._gripper_thread = None
+        self._ready_event = threading.Event()
 
-    def run(self):
+    # ------------------ Thread Loops ------------------ #
+    def _robot_loop(self):
+        """
+        Main control loop (simulating ~1kHz).
+        """
         try:
-            running = True
-            self.ready_event.set()
+            # Mark ready
+            self._ready_event.set()
+
             current_rotation = self.panda.get_orientation()
             current_translation = self.panda.get_position()
+
+            # Create a high-freq context
             ctx = self.panda.create_context(frequency=1000)
             controller = panda_py.controllers.CartesianImpedance()
             self.panda.start_controller(controller)
             time.sleep(1)
 
-            while ctx.ok() and running:
-                # Check for new dpos and drot values
-                if not self.queue.empty():
-                    dpos, drot = self.queue.get()
+            while ctx.ok() and not self._stop_event.is_set():
+                # Check if we have a new command (dpos, drot)
+                try:
+                    smstate = self.spanvstate.get_motion_state_transformed()
+                    dpos = smstate[:3]*MOVE_INCREMENT
+                    drot = smstate[3:]*MOVE_INCREMENT*3
                     current_translation += np.array(
                         [dpos[0], dpos[1], dpos[2]])
                     if drot is not None:
-                        delta_rotation = R.from_euler('xyz', drot)
-                        current_rotation = (
-                            delta_rotation * R.from_quat(current_rotation)
-                        ).as_quat()
+                        delta_rotation = R.from_euler(
+                            "xyz", drot, degrees=False)
+                        curr_q = R.from_quat(current_rotation)
+                        new_q = (delta_rotation * curr_q).as_quat()
+                        current_rotation = new_q
+
+                    # Update controller
                     controller.set_control(
                         current_translation, current_rotation)
 
+                except queue.Empty:
+                    pass
+
+                # Sleep a bit to avoid busy-wait
+                # time.sleep(0.001)
+
         except Exception as e:
-            print(e)
-            running = False
+            print(f"[FrankaAPI] Robot loop exception: {e}")
+        finally:
+            print("[FrankaAPI] Robot loop exiting.")
 
     def _gripper_loop(self):
+        """
+        Asynchronous gripper control loop.
+        """
+        # curwidth = self.gripper.read_once().width
         print("[FrankaAPI] Gripper thread started.")
-        while not self._gripper_stop_event.is_set():
+
+        while not self._stop_event.is_set():
             try:
-                # Non-blocking get for new gripper commands
-                width = self.gripper_cmd_queue.get_nowait()
-                print(f"[FrankaAPI] Moving gripper to width {width}")
-                suc = self.gripper.move(width=width, speed=0.1)
-                print(f"[FrankaAPI] Move gripper success: {suc}")
+
+                if self.spanvstate.is_button_pressed(1):
+                    self.gripper.grasp(width=0.01, speed=0.1, force=10)
+                elif self.spanvstate.is_button_pressed(0):
+                    self.gripper.move(width=0.09, speed=0.1)
+
             except queue.Empty:
                 pass
 
-            # Sleep a bit so we don't spam the CPU
-            time.sleep(0.01)
-
+            time.sleep(0.001)
         print("[FrankaAPI] Gripper thread stopping.")
 
-    def send_command(self, dpos, drot):
-        """Send dpos and drot to the run process."""
-        self.queue.put((dpos, drot))
+    # ------------------ Public Methods ------------------ #
+    def startup(self, spnavstate):
+        """
+        Initialize the robot, move to a starting pose, etc.
+        Then start the robot & gripper threads.
+        """
 
-    def put_state(self, state_data):
-        """Put new state data into ring buffer"""
-        self.Robot_state_buffer.put(state_data)
-
-    def startup(self):
-        joint_pose = [
-            -0.01588696, -0.25534376, 0.18628714,
-            -2.28398158, 0.0769999, 2.02505396, 0.07858208
+        self.spanvstate = spnavstate
+        # Example: move to a home position
+        home_pose = [
+            -0.01588696,
+            -0.25534376,
+            0.18628714,
+            -2.28398158,
+            0.0769999,
+            2.02505396,
+            0.07858208,
         ]
+        self.panda.move_to_joint_position(home_pose)
 
-        # Move to home position
-        self.panda.move_to_joint_position(joint_pose)
+        # (Optional) open gripper here synchronously
+        self.gripper.move(width=0.09, speed=0.1)
 
-        action = np.zeros((9,))
-        action[:-2] = joint_pose
+        # Create and start threads
+        self._stop_event.clear()
 
-        self.start()
-        # threading.Thread(target=self.move_gripper,
-        #                  args=(,)).start()
-
-        self._gripper_stop_event = threading.Event()
+        self._robot_thread = threading.Thread(
+            target=self._robot_loop, daemon=True)
         self._gripper_thread = threading.Thread(
-            target=self._gripper_loop,
-            daemon=True
-        )
+            target=self._gripper_loop, daemon=True)
+
+        self._robot_thread.start()
         self._gripper_thread.start()
-        # Open gripper
-        self.move_gripper(width=0.9)
+
+        # Wait until the robot thread signals it's ready
+        self._ready_event.wait()
 
         return True
 
-    def init_robot(self):
+    def stop(self):
+        """
+        Signal threads to stop and join them.
+        """
+        self._stop_event.set()
+        if self._robot_thread is not None:
+            self._robot_thread.join()
+            self._robot_thread = None
+        if self._gripper_thread is not None:
+            self._gripper_thread.join()
+            self._gripper_thread = None
 
-        print("Robot initialized")
+    def on_teleop(self, spnavstate):
+        """
+        Asynchronously send new (dpos, drot) to the robot loop.
+        dpos in meters, drot in euler angles (xyz) in radians.
+        """
+        self.spanvstate = spnavstate
+
+    # def put_state(self, state_data):
+    #     """
+    #     If you want to store state data in the ring buffer.
+    #     """
+    #     self.Robot_state_buffer.put(state_data)
 
     def get_status(self):
-        obs = dict()
+        """
+        Return a dict describing the current robot + gripper status.
+        E.g., as expected by your FrankaControl code.
+        """
         gripper_state = self.gripper.read_once()
-        gripper_qpos = gripper_state.width if gripper_state is not None else 0
+        gripper_qpos = gripper_state.width
+        ee_pos = self.panda.get_position()
+        ee_ori = self.panda.get_orientation()
+        robot_state = self.panda.get_state()
 
-        log_EE_pose = self.panda.get_position()
-        log_EE_orientation = self.panda.get_orientation()
-        self.robot_state = self.panda.get_state()
-
-        log_joint_pose = self.robot_state.q
-        log_joint_vel = self.robot_state.dq
-        log_joint_torque = self.robot_state.tau_J
-
-        log = {
+        return {
             "arm": {
-                "q": log_joint_pose,
-                "dq": log_joint_vel,
-                "tau_J": log_joint_torque,
-                "EE_position": log_EE_pose,
-                "EE_orientation": log_EE_orientation,
-                "gripper_state": gripper_qpos
+                "q": robot_state.q,
+                "dq": robot_state.dq,
+                "tau_J": robot_state.tau_J,
+                "EE_position": ee_pos,
+                "EE_orientation": ee_ori,
+                "gripper_state": gripper_qpos,
             }
         }
 
-        return log
+    def init_robot(self):
+        print("[FrankaAPI] Robot initialization steps here.")
 
-    def move_gripper(self, width):
-        self.gripper_cmd_queue.put(width)
-
-  # ========= context manager ===========
-
-    @ property
-    def is_ready(self):
-        """
-        Since there is no camera, you might decide to always return True
-        after initialization.
-        """
-        return True
-
-    def start(self, wait=True, exposure_time=5):
-        """
-        Start the mp.Process (the FrankaAPI process).
-        If you have other services, start them here.
-        """
-        super().start()
-        if wait:
-            self.start_wait()
-
-    def stop(self, wait=True):
-        """
-        Stop the FrankaAPI process.
-        If you have other services, stop them here.
-        """
-        self.join()
-        self._gripper_stop_event.set()
-        self._gripper_thread.join()
-        if wait:
-            self.stop_wait()
-
-    def start_wait(self):
-        """
-        Wait for readiness after starting.
-        """
-        self.ready_event.wait()
-
-    def stop_wait(self):
-        pass
-
+    # ------------- Context manager (optional) -------------
     def __enter__(self):
-        self.start()
+        self.startup()
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
+
+    def __del__(self):
+        # Ensure we stop threads and release shared memory
+        self.stop()
+        if self.shm_manager is not None:
+            self.shm_manager.shutdown()
+        print("[FrankaAPI] Cleaned up.")

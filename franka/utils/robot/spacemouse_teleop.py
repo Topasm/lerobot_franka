@@ -54,5 +54,5 @@ class SpacemouseTeleop:
         return {
             "translation": sm_state[:3]*MOVE_INCREMENT,
             "rotation": sm_state[3:]*ROTATION_SCALE,
-            "gripper": int(self.Spacemouse_controller.is_button_pressed(0))-int(self.Spacemouse_controller.is_button_pressed(1)),
+            "gripper": (int(self.Spacemouse_controller.is_button_pressed(0))-int(self.Spacemouse_controller.is_button_pressed(1)))*MOVE_INCREMENT,
         }

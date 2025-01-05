@@ -51,10 +51,10 @@ class FrankaControl(FrankaAPI):
 
     @property
     def motor_features(self) -> dict:
-        action_names = ["arm.joint_positions",
-                        "arm.joint_velocities", "gripper.width"]
-        state_names = ["arm.joint_positions", "arm.joint_velocities",
-                       "arm.joint_torques", "arm.EE_position", "arm.EE_orientation", "gripper.width"]
+        action_names = ["motor1", "motor2", "motor3",
+                        "motor4", "motor5", "motor6", "motor7"]
+        state_names = ["motor1", "motor2", "motor3",
+                       "motor4", "motor5", "motor6", "motor7"]
         return {
             "action": {
                 "dtype": "float32",
@@ -62,6 +62,16 @@ class FrankaControl(FrankaAPI):
                 "names": action_names,
             },
             "observation.state": {
+                "dtype": "float32",
+                "shape": (len(state_names),),
+                "names": state_names,
+            },
+            "observation.velocity": {
+                "dtype": "float32",
+                "shape": (len(state_names),),
+                "names": state_names,
+            },
+            "observation.torque": {
                 "dtype": "float32",
                 "shape": (len(state_names),),
                 "names": state_names,
@@ -81,10 +91,10 @@ class FrankaControl(FrankaAPI):
         return len(self.cameras)
 
     def connect(self):
-        self.is_connected = self.startup()
-        self.control_out = SpacemouseTeleop(
-            shm_manager=self.shm_manager)
-        self.control_out.startup(robot=self)
+
+        self.is_connected = True
+        self.teleop_start = False
+        # self.on_teleop()
         if not self.is_connected:
             print(
                 "Another process is already using Stretch. Try running 'stretch_free_robot_process.py'")
@@ -110,20 +120,19 @@ class FrankaControl(FrankaAPI):
         # TODO(aliberts): return ndarrays instead of torch.Tensors
         if not self.is_connected:
             raise ConnectionError()
+        # run only once to start the teleop just startup countrol_out is not none this is a one time
+        if self.teleop_start is False:
+            self.control_out = SpacemouseTeleop(
+                shm_manager=self.shm_manager)
+            self.is_connected = self.startup(
+                self.control_out.Spacemouse_controller)
+            self.control_out.startup(robot=self)
+            self.teleop_start = True
 
         before_read_t = time.perf_counter()
         state = self.get_state()
-        spa_out = self.control_out.get_state()
-        self.logs["read_pos_dt_s"] = time.perf_counter() - before_read_t
 
-        self.send_command(dpos=spa_out["translation"],
-                          drot=spa_out["rotation"])
-        state["gripper.width"] += 0.1*spa_out["gripper"]
-        if state["gripper.width"] > 0.8:
-            state["gripper.width"] = 0.8
-        if state["gripper.width"] < 0.01:
-            state["gripper.width"] = 0.01
-        self.move_gripper(state["gripper.width"])
+        self.logs["read_pos_dt_s"] = time.perf_counter() - before_read_t
 
         before_write_t = time.perf_counter()
 
@@ -134,7 +143,7 @@ class FrankaControl(FrankaAPI):
 
         if not record_data:
             return
-        action = spa_out
+        action = 0
         # action = torch.as_tensor(list(action.values()))
 
         # Capture images from cameras
@@ -149,8 +158,11 @@ class FrankaControl(FrankaAPI):
 
         # Populate output dictionnaries
         obs_dict, action_dict = {}, {}
-        obs_dict["observation.state"] = state
-        action_dict["action"] = action
+        obs_dict["observation.state"] = state["arm.joint_positions"]
+        obs_dict["observation.velocity"] = state["arm.joint_velocities"]
+        obs_dict["observation.torque"] = state["arm.joint_torques"]
+        # action_dict["action"] = action
+        action_dict["action"] = state["arm.joint_positions"]
         for name in self.cameras:
             obs_dict[f"observation.images.{name}"] = images[name]
 
@@ -191,7 +203,9 @@ class FrankaControl(FrankaAPI):
 
         # Populate output dictionnaries
         obs_dict = {}
-        obs_dict["observation.state"] = state
+        obs_dict["observation.state"] = state["arm.joint_positions"]
+        obs_dict["observation.velocity"] = state["arm.joint_velocities"]
+        obs_dict["observation.torque"] = state["arm.joint_torques"]
         for name in self.cameras:
             obs_dict[f"observation.images.{name}"] = images[name]
 

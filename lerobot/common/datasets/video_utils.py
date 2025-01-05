@@ -197,7 +197,8 @@ class VideoFrame:
     ```
     """
 
-    pa_type: ClassVar[Any] = pa.struct({"path": pa.string(), "timestamp": pa.float32()})
+    pa_type: ClassVar[Any] = pa.struct(
+        {"path": pa.string(), "timestamp": pa.float32()})
     _type: str = field(default="VideoFrame", init=False, repr=False)
 
     def __call__(self):
@@ -227,7 +228,8 @@ def get_audio_info(video_path: Path | str) -> dict:
         "json",
         str(video_path),
     ]
-    result = subprocess.run(ffprobe_audio_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(
+        ffprobe_audio_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Error running ffprobe: {result.stderr}")
 
@@ -263,7 +265,8 @@ def get_video_info(video_path: Path | str) -> dict:
         "json",
         str(video_path),
     ]
-    result = subprocess.run(ffprobe_video_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    result = subprocess.run(
+        ffprobe_video_cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     if result.returncode != 0:
         raise RuntimeError(f"Error running ffprobe: {result.stderr}")
 
