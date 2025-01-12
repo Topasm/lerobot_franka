@@ -112,7 +112,7 @@ class FrankaControl(FrankaAPI):
         self.run_calibration()
 
     def run_calibration(self):
-        self.init_robot()
+        print("Running calibration.")
 
     def teleop_step(
         self, record_data=False
@@ -173,12 +173,12 @@ class FrankaControl(FrankaAPI):
         status = self.get_status()
 
         return {
-            "arm.joint_positions": status["arm"]["q"],
-            "arm.joint_velocities": status["arm"]["dq"],
-            "arm.joint_torques": status["arm"]["tau_J"],
-            "arm.EE_position": status["arm"]["EE_position"],
-            "arm.EE_orientation": status["arm"]["EE_orientation"],
-            "gripper.width": status["arm"]["gripper_state"]}
+            "arm.joint_positions": status["q"],
+            "arm.joint_velocities": status["dq"],
+            "arm.joint_torques": status["tau_J"],
+            "arm.EE_position": status["EE_position"],
+            "arm.EE_orientation": status["EE_orientation"],
+            "gripper.width": status["gripper_state"]}
 
     def capture_observation(self) -> dict:
         # TODO(aliberts): return ndarrays instead of torch.Tensors
