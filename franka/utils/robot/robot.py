@@ -13,7 +13,7 @@ from franka.utils.shared_memory.shared_memory_ring_buffer import SharedMemoryRin
 import ctypes
 import os
 
-MOVE_INCREMENT = 0.008
+MOVE_INCREMENT = 0.006
 GRIPPER_INCREMENT = 0.02
 
 # Constants from <linux/sched.h>
@@ -127,7 +127,7 @@ class FrankaAPI(mp.Process):
                 if self.spnavstate is not None:
                     smstate = self.spnavstate.get_motion_state_transformed()
                     dpos = smstate[:3] * MOVE_INCREMENT
-                    drot = smstate[3:] * MOVE_INCREMENT
+                    drot = smstate[3:] * MOVE_INCREMENT*2
 
                     # Update the translation
                     current_translation += np.array(dpos, dtype=np.float32)
@@ -167,7 +167,7 @@ class FrankaAPI(mp.Process):
                 if self.spnavstate is not None:
                     # if button 1 is pressed => do a grasp
                     if self.spnavstate.is_button_pressed(1):
-                        self.gripper.grasp(width=0.01, speed=0.1, force=10)
+                        self.gripper.grasp(width=0.01, speed=0.1, force=20)
                     # if button 0 is pressed => open
                     elif self.spnavstate.is_button_pressed(0):
                         self.gripper.move(width=0.09, speed=0.1)
