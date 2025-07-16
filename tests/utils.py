@@ -13,23 +13,15 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 import os
 import platform
-from copy import copy
 from functools import wraps
-from pathlib import Path
 
 import pytest
 import torch
 
 from lerobot import available_cameras, available_motors, available_robots
-from lerobot.common.robot_devices.cameras.utils import Camera
-from lerobot.common.robot_devices.motors.utils import MotorsBus
-from lerobot.common.robot_devices.robots.factory import make_robot as make_robot_from_cfg
-from lerobot.common.robot_devices.robots.utils import Robot
-from lerobot.common.utils.import_utils import is_package_available
-from lerobot.common.utils.utils import init_hydra_config
+from lerobot.utils.import_utils import is_package_available
 
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -37,6 +29,8 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 DEFAULT_CONFIG_PATH = "lerobot/configs/default.yaml"
 
 ROBOT_CONFIG_PATH_TEMPLATE = "lerobot/configs/robot/franka.yaml"
+DEVICE = os.environ.get("LEROBOT_TEST_DEVICE",
+                        "cuda") if torch.cuda.is_available() else "cpu"
 
 TEST_ROBOT_TYPES = []
 for robot_type in available_robots:
