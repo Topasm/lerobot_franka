@@ -1,0 +1,28 @@
+# SpaceMouse Teleoperator Configuration for Franka Robot
+# Usage: python -m lerobot.teleoperate --config-path ./configs --config-name spacemouse_franka
+
+defaults:
+  - _self_
+
+# Teleoperator configuration
+teleop:
+  _target_: lerobot.teleoperators.spanav.config_spacemouse.SpacemouseTeleopConfig
+  type: spacemouse
+  id: spacemouse_main
+  deadzone: 0.3
+  move_increment: 0.01
+  rotation_scale: 0.03
+  use_gripper: true
+  robot_ip: "172.16.0.2"
+
+# Robot configuration  
+robot:
+  _target_: lerobot.common.robot_devices.robots.franka_control.FrankaRobotConfig
+  robot_type: Franka
+  robot_ip: "172.16.0.2"
+  cameras: {}
+
+# Control settings
+fps: 30
+teleop_time_s: null
+display_data: false

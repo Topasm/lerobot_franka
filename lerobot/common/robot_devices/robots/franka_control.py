@@ -7,7 +7,6 @@ from pathlib import Path
 from multiprocessing.managers import SharedMemoryManager
 from franka.utils.robot.robot import FrankaAPI
 from lerobot.common.robot_devices.cameras.utils import Camera
-from franka.utils.robot.spacemouse_teleop import SpacemouseTeleop
 
 
 @dataclass
@@ -122,11 +121,21 @@ class FrankaControl(FrankaAPI):
             raise ConnectionError()
         # run only once to start the teleop just startup countrol_out is not none this is a one time
         if self.teleop_start is False:
-            self.control_out = SpacemouseTeleop(
-                shm_manager=self.shm_manager)
-            self.is_connected = self.startup(
-                self.control_out.Spacemouse_controller)
-            self.control_out.startup(robot=self)
+            # Use the new LeRobot spacemouse teleoperator
+            from lerobot.teleoperators.spanav.config_spacemouse import SpacemouseTeleopConfig
+            from lerobot.teleoperators import make_teleoperator_from_config
+
+            teleop_config = SpacemouseTeleopConfig(
+                id="franka_spacemouse",
+                deadzone=0.3,
+                move_increment=0.01,
+                rotation_scale=0.03,
+                use_gripper=True,
+                robot_ip=self.config.robot_ip or "172.16.0.2"
+            )
+
+            self.control_out = make_teleoperator_from_config(teleop_config)
+            self.control_out.connect()
             self.teleop_start = True
 
         before_read_t = time.perf_counter()

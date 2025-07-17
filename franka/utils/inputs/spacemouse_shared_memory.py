@@ -1,7 +1,9 @@
 import multiprocessing as mp
-import numpy as np
 import time
-from spnav import spnav_open, spnav_poll_event, spnav_close, SpnavMotionEvent, SpnavButtonEvent
+
+import numpy as np
+import pyspacemouse
+
 from franka.utils.shared_memory.shared_memory_ring_buffer import SharedMemoryRingBuffer
 
 
@@ -14,13 +16,15 @@ class Spacemouse(mp.Process):
                  deadzone=(0, 0, 0, 0, 0, 0),
                  dtype=np.float32,
                  n_buttons=2,
+                 device_path=None,
                  ):
         """
         Continuously listen to 3D connection space navigator events
-        and update the latest state.
+        and update the latest state using pyspacemouse.
 
         max_value: {300, 500} 300 for wired version and 500 for wireless
         deadzone: [0,1], number or tuple, axis with value lower than this value will stay at 0
+        device_path: optional device path for the spacemouse (e.g., "/dev/hidraw4")
 
         front
         z
@@ -43,8 +47,11 @@ class Spacemouse(mp.Process):
         self.dtype = dtype
         self.deadzone = deadzone
         self.n_buttons = n_buttons
-        # self.motion_event = SpnavMotionEvent([0,0,0], [0,0,0], 0)
-        # self.button_state = defaultdict(lambda: False)
+        self.device_path = device_path
+        self.mouse = None
+        self.latest_state = None
+
+        # transformation matrix from spacemouse to desired coordinate system
         self.tx_zup_spnav = np.array([
             [0, 0, -1],
             [1, 0, 0],
@@ -125,12 +132,22 @@ class Spacemouse(mp.Process):
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.stop()
 
-    # ========= main loop ==========
     def run(self):
-        spnav_open()
+        """Main loop using pyspacemouse instead of spnav."""
+        # Open spacemouse connection
+        if self.device_path is None:
+            self.mouse = pyspacemouse.open()
+        else:
+            self.mouse = pyspacemouse.open(path=self.device_path)
+
+        if not self.mouse:
+            print("Failed to open spacemouse device")
+            return
+
         try:
             motion_event = np.zeros((7,), dtype=np.int64)
             button_state = np.zeros((self.n_buttons,), dtype=bool)
+
             # send one message immediately so client can start reading
             self.ring_buffer.put({
                 'motion_event': motion_event,
@@ -140,22 +157,44 @@ class Spacemouse(mp.Process):
             self.ready_event.set()
 
             while not self.stop_event.is_set():
-                event = spnav_poll_event()
+                # Read spacemouse state
+                state = self.mouse.read()
                 receive_timestamp = time.time()
-                if isinstance(event, SpnavMotionEvent):
-                    motion_event[:3] = event.translation
-                    motion_event[3:6] = event.rotation
-                    motion_event[6] = event.period
-                elif isinstance(event, SpnavButtonEvent):
-                    button_state[event.bnum] = event.press
-                else:
-                    # finish integrating this round of events
-                    # before sending over
-                    self.ring_buffer.put({
-                        'motion_event': motion_event,
-                        'button_state': button_state,
-                        'receive_timestamp': receive_timestamp
-                    })
-                    time.sleep(1/self.frequency)
+
+                if state is not None:
+                    # Update motion event from pyspacemouse state
+                    # Scale values to match expected range
+                    motion_event[0] = int(
+                        state.x * self.max_value)  # translation x
+                    motion_event[1] = int(
+                        state.y * self.max_value)  # translation y
+                    motion_event[2] = int(
+                        state.z * self.max_value)  # translation z
+                    motion_event[3] = int(
+                        state.roll * self.max_value)   # rotation x
+                    motion_event[4] = int(
+                        state.pitch * self.max_value)  # rotation y
+                    motion_event[5] = int(
+                        state.yaw * self.max_value)    # rotation z
+                    motion_event[6] = int(state.t * 1000)  # timestamp in ms
+
+                    # Update button state
+                    if hasattr(state, 'buttons') and len(state.buttons) >= self.n_buttons:
+                        button_state[:len(state.buttons)
+                                     ] = state.buttons[:self.n_buttons]
+
+                # Send data to ring buffer
+                self.ring_buffer.put({
+                    'motion_event': motion_event,
+                    'button_state': button_state,
+                    'receive_timestamp': receive_timestamp
+                })
+
+                # Sleep to maintain frequency
+                time.sleep(1.0 / self.frequency)
+
+        except Exception as e:
+            print(f"Error in spacemouse run loop: {e}")
         finally:
-            spnav_close()
+            if self.mouse:
+                self.mouse.close()
